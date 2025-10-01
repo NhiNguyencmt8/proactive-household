@@ -5,11 +5,11 @@
 # LICENSE file in the root directory of this source tree.
 
 import os
-import gym
 import imageio
 import numpy as np
 
-import habitat.gym  # noqa: F401
+import habitat
+from habitat import get_config
 from habitat.utils.visualizations.utils import (
     observations_to_image,
     overlay_frame,
@@ -24,7 +24,13 @@ def example():
     output_dir = "./data/example_videos"
     os.makedirs(output_dir, exist_ok=True)
 
-    with gym.make("RearrangePddlTask-v0") as env:
+    # Load the social navigation configuration with Spot robot
+    config = get_config("habitat-lab/habitat/config/benchmark/multi_agent/hssd_spot_human_social_nav.yaml")
+    
+    # The social nav config has RGB sensors configured for agent_0 (Spot robot)
+    # We'll use the existing head_rgb_sensor for video recording
+    
+    with habitat.Env(config=config) as env:
         print("Environment creation successful")
         observations = env.reset()  # noqa: F841
 
@@ -33,22 +39,22 @@ def example():
         terminal = False
         
         # Method 1: Using imageio for direct video writing
-        video_file_path = os.path.join(output_dir, "example_pick_task_imageio.mp4")
+        video_file_path = os.path.join(output_dir, "social_nav_task_imageio.mp4")
         video_writer = imageio.get_writer(video_file_path, fps=30)
         
         # Method 2: Collect frames for batch video creation
         frames = []
         
-        while not terminal:
-            observations, reward, terminal, info = env.step(
-                env.action_space.sample()
-            )  # noqa: F841
+        while not env.episode_over:
+            # Sample a random action from the action space
+            action = env.action_space.sample()
+            observations = env.step(action)
             
             # Method 1: Direct video writing with imageio
             # Convert observations to renderable image
-            render_obs = observations_to_image(observations, info)
+            render_obs = observations_to_image(observations, {})
             # Add text overlay with metrics
-            render_obs = overlay_frame(render_obs, info)
+            render_obs = overlay_frame(render_obs, {})
             # Write frame to video
             video_writer.append_data(render_obs)
             
@@ -58,8 +64,9 @@ def example():
             count_steps += 1
             
             # Optional: Limit episode length for demo
-            if count_steps >= 100:  # Stop after 100 steps for demo
-                terminal = True
+            # For longer videos, increase this number or comment out to run full episodes
+            if count_steps >= 1000:  # Stop after 1000 steps for very long demo (33+ seconds)
+                break
                 
         print("Episode finished after {} steps.".format(count_steps))
         
@@ -69,33 +76,12 @@ def example():
         
         # Method 2: Create video using habitat utilities
         if frames:
-            batch_video_name = "example_pick_task_habitat_utils"
+            batch_video_name = "social_nav_task_habitat_utils"
             images_to_video(frames, output_dir, batch_video_name, fps=30, quality=9)
             print(f"Video saved using habitat utils: {output_dir}/{batch_video_name}.mp4")
         
-        # Method 3: Using env.render() for raw sensor data
-        env.reset()
-        raw_video_path = os.path.join(output_dir, "example_pick_task_raw.mp4")
-        raw_video_writer = imageio.get_writer(raw_video_path, fps=30)
-        
-        print("Recording raw sensor video...")
-        terminal = False
-        count_steps = 0
-        while not terminal and count_steps < 50:  # Shorter demo for raw video
-            observations, reward, terminal, info = env.step(env.action_space.sample())
-            # Get raw RGB sensor data
-            raw_frame = env.render(mode="rgb_array")
-            raw_video_writer.append_data(raw_frame)
-            count_steps += 1
-            
-        raw_video_writer.close()
-        print(f"Raw sensor video saved: {raw_video_path}")
-        
-        print(f"\n✅ All videos saved in: {output_dir}")
-        print("📁 Files created:")
-        print("  • example_pick_task_imageio.mp4 (with overlays)")
-        print("  • example_pick_task_habitat_utils.mp4 (with overlays)")  
-        print("  • example_pick_task_raw.mp4 (raw sensor data)")
+
+        print(f" Videos saved in: {output_dir}")
 
 
 if __name__ == "__main__":
